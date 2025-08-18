@@ -12,7 +12,6 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import React, { useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export default function RootLayout({
   children,
@@ -75,7 +74,6 @@ export default function RootLayout({
           }
           
           toast({ title: "Import Successful", description: "Data has been restored successfully." });
-          // Force a reload to make sure the main page re-reads the new data from local storage
           window.location.reload();
           
         } else {
@@ -113,7 +111,6 @@ export default function RootLayout({
         <footer className="border-t border-border py-8 bg-card text-card-foreground w-full shrink-0">
             <div className="container mx-auto px-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
                 
-                {/* About AttendAI Section */}
                 <Card className="flex flex-col">
                   <CardHeader>
                       <CardTitle className="text-xl">About AttendAI</CardTitle>
@@ -156,7 +153,6 @@ export default function RootLayout({
                   </div>
                 </Card>
 
-                {/* Customize Header Section */}
                 <Card className="flex flex-col">
                     <CardHeader>
                       <CardTitle>Customize Header</CardTitle>
@@ -174,7 +170,6 @@ export default function RootLayout({
                     </CardContent>
                 </Card>
 
-                {/* Data Backup & Recovery Section */}
                 <Card className="flex flex-col">
                     <CardHeader>
                         <CardTitle>Data Backup & Recovery</CardTitle>
@@ -193,7 +188,6 @@ export default function RootLayout({
                     </CardContent>
                 </Card>
 
-                {/* Developer Info Section */}
                 <Card className="flex flex-col text-center">
                     <CardHeader>
                       <CardTitle>Developer</CardTitle>
@@ -224,5 +218,3 @@ export default function RootLayout({
     </html>
   );
 }
-
-    

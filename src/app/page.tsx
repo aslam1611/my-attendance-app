@@ -107,11 +107,10 @@ export default function AttendancePage() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const { toast } = useToast();
-  const [welcomeText, setWelcomeText] = useLocalStorage("welcomeText", "Welcome");
-  const [companyName, setCompanyName] = useLocalStorage("companyName", "UG Tech");
+  const [welcomeText] = useLocalStorage("welcomeText", "Welcome");
+  const [companyName] = useLocalStorage("companyName", "UG Tech");
   const [currency, setCurrency] = useLocalStorage("currency", "$");
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -279,67 +278,6 @@ export default function AttendancePage() {
         });
     }
 };
-
-  const handleExportData = () => {
-    try {
-      const dataToExport = {
-        attendanceRecords: records,
-        welcomeText: welcomeText,
-        companyName: companyName,
-        currency: currency,
-      };
-      const dataStr = JSON.stringify(dataToExport, null, 2);
-      const blob = new Blob([dataStr], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "attendai_backup.json";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      toast({ title: "Export Successful", description: "Your data has been exported." });
-    } catch (error) {
-      console.error("Export failed:", error);
-      toast({ variant: "destructive", title: "Export Failed", description: "Could not export your data." });
-    }
-  };
-
-  const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const text = e.target?.result;
-        if (typeof text !== 'string') {
-          throw new Error("File is not readable");
-        }
-        const importedData = JSON.parse(text);
-
-        if (Array.isArray(importedData.attendanceRecords) && importedData.welcomeText && importedData.companyName && importedData.currency) {
-          setRecords(importedData.attendanceRecords);
-          setWelcomeText(importedData.welcomeText);
-          setCompanyName(importedData.companyName);
-          setCurrency(importedData.currency);
-          
-          toast({ title: "Import Successful", description: "Data has been restored successfully." });
-          
-        } else {
-          throw new Error("Invalid backup file format.");
-        }
-      } catch (error) {
-        console.error("Import failed:", error);
-        toast({ variant: "destructive", title: "Import Failed", description: "The selected file is not a valid backup." });
-      } finally {
-        if(fileInputRef.current) {
-            fileInputRef.current.value = "";
-        }
-      }
-    };
-    reader.readAsText(file);
-  };
 
   const displayedRecords = useMemo(() => {
     if (view === "all") {
@@ -541,59 +479,71 @@ export default function AttendancePage() {
           <CardContent>
               <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField control={form.control} name="name" render={({ field }) => (
-                      <FormItem>
-                      <FormLabel>Employee Name</FormLabel>
-                      <FormControl>
-                          <div className="relative">
-                              <Input 
-                              placeholder="Enter name" 
-                              {...field} 
-                              onChange={handleNameChange}
-                              onFocus={handleNameChange}
-                              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-                              autoComplete="off"
-                              />
-                              {showSuggestions && suggestions.length > 0 && (
-                                  <ul className="absolute z-10 w-full bg-card border border-border rounded-md mt-1 max-h-40 overflow-y-auto shadow-lg">
-                                      {suggestions.map(name => (
-                                          <li 
-                                              key={name}
-                                              className="px-3 py-2 cursor-pointer hover:bg-accent"
-                                              onMouseDown={() => handleSuggestionClick(name)}
-                                          >
-                                              {name}
-                                          </li>
-                                      ))}
-                                  </ul>
-                              )}
-                          </div>
-                      </FormControl>
-                      <FormMessage />
-                      </FormItem>
-                  )} />
-                  <FormField control={form.control} name="date" render={({ field }) => (
-                      <FormItem className="flex flex-col">
-                      <FormLabel>Date</FormLabel>
-                          <Popover>
-                          <PopoverTrigger asChild>
-                              <FormControl>
-                              <Button variant={"outline"} className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
-                                  {field.value ? (format(field.value, "PPP")) : (<span>Pick a date</span>)}
-                                  <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                              </Button>
-                              </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                              <Calendar mode="single" selected={field.value} onSelect={field.onChange} disabled={(date) => date > new Date() || date < new Date("1900-01-01")} initialFocus />
-                          </PopoverContent>
-                          </Popover>
-                      <FormMessage />
-                      </FormItem>
-                  )} />
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                    <FormField control={form.control} name="name" render={({ field }) => (
+                        <FormItem>
+                        <FormLabel>Employee Name</FormLabel>
+                        <FormControl>
+                            <div className="relative">
+                                <Input 
+                                placeholder="Enter name" 
+                                {...field} 
+                                onChange={handleNameChange}
+                                onFocus={handleNameChange}
+                                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                                autoComplete="off"
+                                />
+                                {showSuggestions && suggestions.length > 0 && (
+                                    <ul className="absolute z-10 w-full bg-card border border-border rounded-md mt-1 max-h-40 overflow-y-auto shadow-lg">
+                                        {suggestions.map(name => (
+                                            <li 
+                                                key={name}
+                                                className="px-3 py-2 cursor-pointer hover:bg-accent"
+                                                onMouseDown={() => handleSuggestionClick(name)}
+                                            >
+                                                {name}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        </FormControl>
+                        <FormMessage />
+                        </FormItem>
+                    )} />
+                    <FormField control={form.control} name="date" render={({ field }) => (
+                        <FormItem className="flex flex-col">
+                        <FormLabel>Date</FormLabel>
+                            <Popover>
+                            <PopoverTrigger asChild>
+                                <FormControl>
+                                <Button variant={"outline"} className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+                                    {field.value ? (format(field.value, "PPP")) : (<span>Pick a date</span>)}
+                                    <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                </Button>
+                                </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar mode="single" selected={field.value} onSelect={field.onChange} disabled={(date) => date > new Date() || date < new Date("1900-01-01")} initialFocus />
+                            </PopoverContent>
+                            </Popover>
+                        <FormMessage />
+                        </FormItem>
+                    )} />
+                     <FormField control={form.control} name="arrival" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Arrival Time</FormLabel>
+                            <FormControl><Input type="time" {...field} value={field.value || ''} /></FormControl>
+                        </FormItem>
+                    )} />
+                     <FormField control={form.control} name="departure" render={({ field }) => (
+                          <FormItem>
+                              <FormLabel>Departure Time</FormLabel>
+                              <FormControl><Input type="time" {...field} value={field.value || ''}/></FormControl>
+                          </FormItem>
+                      )} />
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                       <FormField control={form.control} name="status" render={({ field }) => (
                           <FormItem>
                               <FormLabel>Status</FormLabel>
@@ -617,31 +567,33 @@ export default function AttendancePage() {
                               <FormMessage />
                           </FormItem>
                       )} />
-                      <FormField control={form.control} name="arrival" render={({ field }) => (
-                          <FormItem>
-                              <FormLabel>Arrival Time</FormLabel>
-                              <FormControl><Input type="time" {...field} value={field.value || ''} /></FormControl>
-                          </FormItem>
-                      )} />
-                      <FormField control={form.control} name="departure" render={({ field }) => (
-                          <FormItem>
-                              <FormLabel>Departure Time</FormLabel>
-                              <FormControl><Input type="time" {...field} value={field.value || ''}/></FormControl>
-                          </FormItem>
-                      )} />
                        <FormField control={form.control} name="advanceCredit" render={({ field }) => (
                           <FormItem>
                               <FormLabel>Advance Credit ({currency})</FormLabel>
                               <FormControl><Input type="number" placeholder="e.g., 1000" {...field} onChange={event => field.onChange(event.target.value === '' ? undefined : +event.target.value)} value={field.value || ''} /></FormControl>
                           </FormItem>
                       )} />
+                       <div className="space-y-2">
+                            <Label htmlFor="currency-select-main">Currency</Label>
+                             <Select value={currency} onValueChange={setCurrency}>
+                                <SelectTrigger id="currency-select-main">
+                                    <SelectValue placeholder="Select currency" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="$">USD ($)</SelectItem>
+                                    <SelectItem value="₨">PKR (₨)</SelectItem>
+                                    <SelectItem value="₹">INR (₹)</SelectItem>
+                                    <SelectItem value="€">EUR (€)</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                      <FormField control={form.control} name="notes" render={({ field }) => (
+                          <FormItem className="md:col-span-1">
+                              <FormLabel>Notes</FormLabel>
+                              <FormControl><Textarea placeholder="Optional notes" {...field} value={field.value || ''} /></FormControl>
+                          </FormItem>
+                      )} />
                   </div>
-                  <FormField control={form.control} name="notes" render={({ field }) => (
-                      <FormItem>
-                          <FormLabel>Notes</FormLabel>
-                          <FormControl><Textarea placeholder="Optional notes" {...field} value={field.value || ''} /></FormControl>
-                      </FormItem>
-                  )} />
                   <Button type="submit" className="w-full h-12 text-lg relative overflow-hidden bg-gradient-to-br from-green-500 to-green-700 text-white font-bold shine-effect transition-transform duration-300 hover:scale-105">
                     <FilePen className="absolute opacity-20 w-16 h-16 -right-4 -bottom-4" />
                     <span className="z-10">Add / Update Record</span>
@@ -653,69 +605,9 @@ export default function AttendancePage() {
           
           <MainContent />
         </div>
-
-          <div className="grid grid-cols-1 gap-8">
-              <Card>
-                  <CardHeader><CardTitle>Customize Header</CardTitle><CardDescription>Change the header text and currency below.</CardDescription></CardHeader>
-                  <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div className="space-y-2 md:col-span-1">
-                              <Label htmlFor="welcome-text-input">Welcome Text</Label>
-                              <Input 
-                                  id="welcome-text-input" 
-                                  value={welcomeText} 
-                                  onChange={(e) => setWelcomeText(e.target.value)}
-                              />
-                          </div>
-                          <div className="space-y-2 md:col-span-1">
-                              <Label htmlFor="company-name-input">Company Name</Label>
-                              <Input 
-                                  id="company-name-input"
-                                  value={companyName}
-                                  onChange={(e) => setCompanyName(e.target.value)}
-                              />
-                          </div>
-                          <div className="space-y-2 md:col-span-1">
-                                <Label htmlFor="currency-select">Currency</Label>
-                                <Select value={currency} onValueChange={setCurrency}>
-                                    <SelectTrigger id="currency-select">
-                                        <SelectValue placeholder="Select currency" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="$">USD ($)</SelectItem>
-                                        <SelectItem value="₨">PKR (₨)</SelectItem>
-                                        <SelectItem value="₹">INR (₹)</SelectItem>
-                                        <SelectItem value="€">EUR (€)</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                          </div>
-                      </div>
-                  </CardContent>
-              </Card>
-              <Card>
-                  <CardHeader>
-                      <CardTitle>Data Backup & Recovery</CardTitle>
-                      <CardDescription>Save all your data to a file or restore it from a backup.</CardDescription></CardHeader>
-                  <CardContent className="flex flex-col sm:flex-row gap-4">
-                       <Button onClick={handleExportData} className="w-full">
-                          <Download className="mr-2 h-4 w-4" />
-                          Export Data
-                      </Button>
-                      <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="w-full">
-                          <Upload className="mr-2 h-4 w-4" />
-                          Import Data
-                      </Button>
-                      <input
-                          type="file"
-                          ref={fileInputRef}
-                          onChange={handleImportData}
-                          className="hidden"
-                          accept="application/json"
-                      />
-                  </CardContent>
-              </Card>
-          </div>
       </main>
     </div>
   );
 }
+
+    
