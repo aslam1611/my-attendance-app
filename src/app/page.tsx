@@ -48,8 +48,9 @@ import useLocalStorage from "@/hooks/use-local-storage";
 
 
 type AttendanceRecord = {
-  id: string; 
+  id: string;
   name: string;
+  type: "employee" | "student";
   date: string;
   status: "present" | "absent" | "late";
   arrival: string | null;
@@ -61,6 +62,7 @@ type AttendanceRecord = {
 
 const formSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters."),
+  type: z.enum(["employee", "student"]),
   date: z.date({
     required_error: "A date is required.",
   }),
@@ -75,6 +77,7 @@ type FormValues = z.infer<typeof formSchema>;
 
 const defaultFormValues: Omit<FormValues, 'date'> & { date?: Date } = {
     name: "",
+    type: "employee",
     status: "present",
     arrival: "",
     departure: "",
@@ -101,7 +104,7 @@ const StatCard = ({ title, onClick, className, children }: { title: string; onCl
 
 export default function AttendancePage() {
   const [records, setRecords] = useLocalStorage<AttendanceRecord[]>("attendanceRecords", []);
-  const [view, setView] = useState<"current" | "all" | "employees" | "advances">("current");
+  const [view, setView] = useState<"current" | "employees" | "advances">("current");
   const [isMounted, setIsMounted] = useState(false);
   const [isPredicting, setIsPredicting] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -111,13 +114,27 @@ export default function AttendancePage() {
   const [companyName] = useLocalStorage("companyName", "UG Tech");
   const [currency, setCurrency] = useLocalStorage("currency", "$");
 
-
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: defaultFormValues,
   });
 
-  const employeeNames = useMemo(() => [...new Set(records.map(r => r.name))].sort(), [records]);
+  const memberType = form.watch("type");
+
+  useEffect(() => {
+    // Migration for old records without a 'type' field
+    const recordsNeedMigration = records.some(r => !r.type);
+    if (recordsNeedMigration) {
+        const migratedRecords = records.map(r => ({ ...r, type: r.type || 'employee' }));
+        setRecords(migratedRecords);
+    }
+  }, [records, setRecords]);
+
+
+  const employeeNames = useMemo(() => {
+    const allNames = records.map(r => r.name);
+    return [...new Set(allNames)].sort();
+  }, [records]);
   
   useEffect(() => {
     setIsMounted(true);
@@ -141,6 +158,11 @@ export default function AttendancePage() {
   
   const handleSuggestionClick = (name: string) => {
     form.setValue('name', name);
+    // Also set the type based on the selected person's last record
+    const lastRecord = records.find(r => r.name === name);
+    if (lastRecord) {
+        form.setValue('type', lastRecord.type);
+    }
     setSuggestions([]);
     setShowSuggestions(false);
   };
@@ -157,6 +179,7 @@ export default function AttendancePage() {
         updatedRecords[existingRecordIndex] = {
             ...existingRecord,
             name: values.name,
+            type: values.type,
             date: format(values.date, 'yyyy-MM-dd'),
             status: values.status,
             arrival: values.arrival || null,
@@ -173,6 +196,7 @@ export default function AttendancePage() {
         const newRecord: AttendanceRecord = {
           id: newRecordId,
           name: values.name,
+          type: values.type,
           date: format(values.date, 'yyyy-MM-dd'),
           status: values.status,
           arrival: values.arrival || null,
@@ -186,14 +210,14 @@ export default function AttendancePage() {
         toast({ title: "Record Added", description: `Attendance for ${values.name} has been added.` });
     }
     
-    setView("all");
+    setView("current");
     form.reset({ ...defaultFormValues, date: new Date() });
   };
   
   const handlePredict = async () => {
     const employeeName = form.getValues("name");
     if (!employeeName) {
-      toast({ variant: "destructive", title: "Missing Information", description: "Please enter an employee name to predict status." });
+      toast({ variant: "destructive", title: "Missing Information", description: "Please enter a name to predict status." });
       return;
     }
     
@@ -280,9 +304,6 @@ export default function AttendancePage() {
 };
 
   const displayedRecords = useMemo(() => {
-    if (view === "all") {
-      return records;
-    }
     if (view === "current") {
       const currentMonth = format(new Date(), 'yyyy-MM');
       return records.filter(r => r.date.startsWith(currentMonth));
@@ -348,35 +369,62 @@ export default function AttendancePage() {
   
   const MainContent = () => {
     if (view === "employees") {
+      const sortedEmployees = employeeNames.filter(name => records.some(r => r.name === name && r.type === 'employee')).sort();
+      const sortedStudents = employeeNames.filter(name => records.some(r => r.name === name && r.type === 'student')).sort();
+
       return (
         <Card>
           <CardHeader>
-            <CardTitle>All Employees</CardTitle>
-            <CardDescription>Click on an employee to view their detailed record. A currency icon indicates an advance was taken this month.</CardDescription>
+            <CardTitle>All Employees & Students</CardTitle>
+            <CardDescription>Click on a name to view their detailed record. A currency icon indicates a payment was made this month.</CardDescription>
           </CardHeader>
           <CardContent>
-             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {employeeNames.map(name => {
-                  const advanceSymbol = employeesWithAdvanceInCurrentMonth.get(name);
-                  return (
-                    <Link key={name} href={`/employee/${encodeURIComponent(name)}`} passHref>
-                      <Button variant="outline" className="w-full h-auto min-h-[70px] justify-start p-3 text-left flex items-center gap-3 whitespace-normal">
-                        <User className="h-5 w-5 flex-shrink-0" />
-                        <span className="font-semibold break-words flex-1 leading-tight">{name}</span>
-                        {advanceSymbol && <CurrencyIcon symbol={advanceSymbol} className="h-5 w-5 text-green-600 flex-shrink-0" />}
-                      </Button>
-                    </Link>
-                  )
-              })}
-            </div>
+            {sortedEmployees.length > 0 && (
+                <div className="mb-6">
+                    <h3 className="text-lg font-semibold mb-2">Employees</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        {sortedEmployees.map(name => {
+                            const advanceSymbol = employeesWithAdvanceInCurrentMonth.get(name);
+                            return (
+                                <Link key={name} href={`/employee/${encodeURIComponent(name)}`} passHref>
+                                <Button variant="outline" className="w-full h-auto min-h-[70px] justify-start p-3 text-left flex items-center gap-3 whitespace-normal">
+                                    <User className="h-5 w-5 flex-shrink-0" />
+                                    <span className="font-semibold break-words flex-1 leading-tight">{name}</span>
+                                    {advanceSymbol && <CurrencyIcon symbol={advanceSymbol} className="h-5 w-5 text-green-600 flex-shrink-0" />}
+                                </Button>
+                                </Link>
+                            )
+                        })}
+                    </div>
+                </div>
+            )}
+            {sortedStudents.length > 0 && (
+                 <div>
+                    <h3 className="text-lg font-semibold mb-2">Students</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        {sortedStudents.map(name => {
+                            const advanceSymbol = employeesWithAdvanceInCurrentMonth.get(name);
+                            return (
+                                <Link key={name} href={`/employee/${encodeURIComponent(name)}`} passHref>
+                                <Button variant="outline" className="w-full h-auto min-h-[70px] justify-start p-3 text-left flex items-center gap-3 whitespace-normal">
+                                    <User className="h-5 w-5 flex-shrink-0" />
+                                    <span className="font-semibold break-words flex-1 leading-tight">{name}</span>
+                                    {advanceSymbol && <CurrencyIcon symbol={advanceSymbol} className="h-5 w-5 text-blue-600 flex-shrink-0" />}
+                                </Button>
+                                </Link>
+                            )
+                        })}
+                    </div>
+                </div>
+            )}
+            {sortedStudents.length === 0 && sortedEmployees.length === 0 && <p className="text-muted-foreground">No employees or students found.</p>}
           </CardContent>
         </Card>
       )
     }
 
     const tableTitle = view === 'current' ? 'Current Month Attendance' 
-                     : view === 'all' ? 'All Attendance Records'
-                     : 'Advance Credit Records';
+                     : 'Advance / Fees Records';
 
     return (
         <Card id="main-table-card">
@@ -394,10 +442,11 @@ export default function AttendancePage() {
                         <TableHead>No.</TableHead>
                         <TableHead>Date</TableHead>
                         <TableHead>Name</TableHead>
+                        <TableHead>Type</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Arrival</TableHead>
                         <TableHead>Departure</TableHead>
-                        <TableHead>Advance Credit</TableHead>
+                        <TableHead>Advance/Fees</TableHead>
                         <TableHead>Notes</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
@@ -414,6 +463,7 @@ export default function AttendancePage() {
                                     </Button>
                                 </Link>
                             </TableCell>
+                            <TableCell className="capitalize">{record.type || 'employee'}</TableCell>
                             <TableCell><StatusBadge status={record.status} /></TableCell>
                             <TableCell>{record.arrival || '-'}</TableCell>
                             <TableCell>{record.departure || '-'}</TableCell>
@@ -434,7 +484,7 @@ export default function AttendancePage() {
                                 </AlertDialog>
                             </TableCell>
                         </TableRow>
-                        )) : <TableRow><TableCell colSpan={9} className="text-center">No records found.</TableCell></TableRow>}
+                        )) : <TableRow><TableCell colSpan={10} className="text-center">No records found.</TableCell></TableRow>}
                     </TableBody>
                 </Table>
             </div>
@@ -455,17 +505,14 @@ export default function AttendancePage() {
 
         <p className="text-center text-muted-foreground -mt-6">AttendAI - Your AI-Powered Attendance Register</p>
           
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <StatCard title="Current Month" onClick={() => setView('current')} className="bg-gradient-to-br from-cyan-400 via-sky-500 to-blue-600">
                   <CalendarIcon className="absolute opacity-10 w-20 h-20 -right-2 -bottom-2" />
               </StatCard>
-              <StatCard title="All Records" onClick={() => setView('all')} className="bg-gradient-to-br from-orange-400 via-red-500 to-rose-600">
-                  <User className="absolute opacity-10 w-20 h-20 -right-2 -bottom-2" />
-              </StatCard>
-              <StatCard title="Employees" onClick={() => setView('employees')} className="bg-gradient-to-br from-purple-500 via-fuchsia-500 to-pink-500">
+              <StatCard title="Employees & Students" onClick={() => setView('employees')} className="bg-gradient-to-br from-purple-500 via-fuchsia-500 to-pink-500">
                   <Users className="absolute opacity-10 w-20 h-20 -right-2 -bottom-2" />
               </StatCard>
-              <StatCard title="Advance Credit" onClick={() => setView('advances')} className="bg-gradient-to-br from-lime-400 via-green-500 to-emerald-600">
+              <StatCard title="Advances & Fees" onClick={() => setView('advances')} className="bg-gradient-to-br from-lime-400 via-green-500 to-emerald-600">
                   <DollarSign className="absolute opacity-10 w-20 h-20 -right-2 -bottom-2" />
               </StatCard>
         </div>
@@ -473,16 +520,33 @@ export default function AttendancePage() {
         <div className="space-y-8">
           <Card>
           <CardHeader>
-              <CardTitle>Add New Employee or Attendance</CardTitle>
-              <CardDescription>Fill out the form to add a new attendance record. You can also add an advance credit amount here.</CardDescription>
+              <CardTitle>Add New Record</CardTitle>
+              <CardDescription>Fill out the form to add a new attendance record for an employee or student.</CardDescription>
           </CardHeader>
           <CardContent>
               <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                    <FormField control={form.control} name="type" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Type</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select type" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="employee">Employee</SelectItem>
+                              <SelectItem value="student">Student</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
                     <FormField control={form.control} name="name" render={({ field }) => (
                         <FormItem>
-                        <FormLabel>Employee Name</FormLabel>
+                        <FormLabel>Name</FormLabel>
                         <FormControl>
                             <div className="relative">
                                 <Input 
@@ -511,6 +575,8 @@ export default function AttendancePage() {
                         <FormMessage />
                         </FormItem>
                     )} />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                     <FormField control={form.control} name="date" render={({ field }) => (
                         <FormItem className="flex flex-col">
                         <FormLabel>Date</FormLabel>
@@ -542,8 +608,6 @@ export default function AttendancePage() {
                               <FormControl><Input type="time" {...field} value={field.value || ''}/></FormControl>
                           </FormItem>
                       )} />
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                       <FormField control={form.control} name="status" render={({ field }) => (
                           <FormItem>
                               <FormLabel>Status</FormLabel>
@@ -567,9 +631,11 @@ export default function AttendancePage() {
                               <FormMessage />
                           </FormItem>
                       )} />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                        <FormField control={form.control} name="advanceCredit" render={({ field }) => (
                           <FormItem>
-                              <FormLabel>Advance Credit ({currency})</FormLabel>
+                              <FormLabel>Advance or Fees ({currency})</FormLabel>
                               <FormControl><Input type="number" placeholder="e.g., 1000" {...field} onChange={event => field.onChange(event.target.value === '' ? undefined : +event.target.value)} value={field.value || ''} /></FormControl>
                           </FormItem>
                       )} />
@@ -587,13 +653,13 @@ export default function AttendancePage() {
                                 </SelectContent>
                             </Select>
                         </div>
-                      <FormField control={form.control} name="notes" render={({ field }) => (
-                          <FormItem className="md:col-span-1">
-                              <FormLabel>Notes</FormLabel>
-                              <FormControl><Textarea placeholder="Optional notes" {...field} value={field.value || ''} /></FormControl>
-                          </FormItem>
-                      )} />
                   </div>
+                   <FormField control={form.control} name="notes" render={({ field }) => (
+                        <FormItem className="md:col-span-1">
+                            <FormLabel>Notes</FormLabel>
+                            <FormControl><Textarea placeholder="Optional notes" {...field} value={field.value || ''} /></FormControl>
+                        </FormItem>
+                    )} />
                   <Button type="submit" className="w-full h-12 text-lg relative overflow-hidden bg-gradient-to-br from-green-500 to-green-700 text-white font-bold shine-effect transition-transform duration-300 hover:scale-105">
                     <FilePen className="absolute opacity-20 w-16 h-16 -right-4 -bottom-4" />
                     <span className="z-10">Add / Update Record</span>
@@ -609,5 +675,3 @@ export default function AttendancePage() {
     </div>
   );
 }
-
-    
